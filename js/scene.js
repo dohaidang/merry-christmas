@@ -27,6 +27,11 @@ let fireworkGeometry = null;
 let fireworkMaterial = null;
 let fireworkPoints = null;
 
+// Snow system
+let snowGeometry = null;
+let snowMaterial = null;
+let snowPoints = null;
+
 function init3D() {
     try {
         // Check if Three.js is loaded
@@ -55,6 +60,7 @@ function init3D() {
         createPhotos();
         createDecorations();
         initFireworkSystem();
+        initSnowSystem();
         animate();
     } catch (e) {
         console.error('Error initializing 3D scene:', e);
@@ -252,6 +258,109 @@ function initFireworkSystem() {
     
     fireworkPoints = new THREE.Points(fireworkGeometry, fireworkMaterial);
     scene.add(fireworkPoints);
+}
+
+// Initialize snow system
+function initSnowSystem() {
+    const snowCount = CONFIG.snowCount;
+    const positions = new Float32Array(snowCount * 3);
+    const sizes = new Float32Array(snowCount);
+    const speeds = new Float32Array(snowCount);
+    const windOffsets = new Float32Array(snowCount);
+    
+    // Initialize snow particles
+    for (let i = 0; i < snowCount; i++) {
+        // Random position in a wide area (closer to camera)
+        positions[i * 3] = (Math.random() - 0.5) * 200; // x
+        positions[i * 3 + 1] = Math.random() * 150 + 50; // y (start from top)
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 100 + 50; // z (in front of scene, near camera)
+        
+        // Random size (larger for better visibility)
+        sizes[i] = 1.5 + Math.random() * 2.5;
+        
+        // Random fall speed
+        speeds[i] = 0.15 + Math.random() * 0.25;
+        
+        // Random wind offset for variation
+        windOffsets[i] = Math.random() * Math.PI * 2;
+    }
+    
+    snowGeometry = new THREE.BufferGeometry();
+    snowGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    snowGeometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+    
+    snowGeometry.userData = {
+        positions: positions,
+        sizes: sizes,
+        speeds: speeds,
+        windOffsets: windOffsets,
+        count: snowCount
+    };
+    
+    // Create snow texture (simple white circle)
+    const snowCanvas = document.createElement('canvas');
+    snowCanvas.width = 32;
+    snowCanvas.height = 32;
+    const snowCtx = snowCanvas.getContext('2d');
+    const gradient = snowCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    snowCtx.fillStyle = gradient;
+    snowCtx.fillRect(0, 0, 32, 32);
+    const snowTexture = new THREE.CanvasTexture(snowCanvas);
+    
+    snowMaterial = new THREE.PointsMaterial({
+        size: 4.0, // Larger size for better visibility
+        sizeAttenuation: true,
+        map: snowTexture,
+        transparent: true,
+        opacity: 0.9, // Higher opacity for better visibility
+        color: 0xFFFFFF,
+        blending: THREE.AdditiveBlending, // Additive blending for glow effect
+        depthWrite: false
+    });
+    
+    snowPoints = new THREE.Points(snowGeometry, snowMaterial);
+    scene.add(snowPoints);
+}
+
+// Update snow particles
+function updateSnow(time) {
+    if (!snowPoints || !snowGeometry) return;
+    
+    const geo = snowGeometry.userData;
+    if (!geo || !geo.positions) return;
+    
+    const windStrength = Math.sin(time * 0.3) * 0.5; // Increased wind strength
+    
+    for (let i = 0; i < geo.count; i++) {
+        // Update Y position (fall down)
+        geo.positions[i * 3 + 1] -= geo.speeds[i];
+        
+        // Wind effect (horizontal movement) - more visible
+        geo.positions[i * 3] += windStrength * Math.sin(time * 0.5 + geo.windOffsets[i]) * 0.2;
+        
+        // Slight rotation effect (swaying) - more visible
+        geo.positions[i * 3 + 2] += Math.sin(time * 0.4 + geo.windOffsets[i]) * 0.1;
+        
+        // Reset particle when it falls below view
+        if (geo.positions[i * 3 + 1] < -100) {
+            geo.positions[i * 3] = (Math.random() - 0.5) * 200; // Random x
+            geo.positions[i * 3 + 1] = 150; // Reset to top
+            geo.positions[i * 3 + 2] = (Math.random() - 0.5) * 100 + 50; // Random z (near camera)
+        }
+        
+        // Keep particles in bounds horizontally
+        if (Math.abs(geo.positions[i * 3]) > 120) {
+            geo.positions[i * 3] = (Math.random() - 0.5) * 200;
+        }
+        if (geo.positions[i * 3 + 2] < 0 || geo.positions[i * 3 + 2] > 150) {
+            geo.positions[i * 3 + 2] = (Math.random() - 0.5) * 100 + 50;
+        }
+    }
+    
+    snowGeometry.attributes.position.needsUpdate = true;
 }
 
 // Create firework burst at position
@@ -589,6 +698,9 @@ function animate() {
     // Update fireworks
     const deltaTime = 0.016; // ~60fps
     updateFireworks(deltaTime);
+    
+    // Update snow
+    updateSnow(time);
     
     // Calculate transition progress with easing
     const easedProgress = transitionState.isActive ? easeInOutCubic(transitionState.progress) : 1;
