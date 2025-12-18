@@ -21,6 +21,12 @@ let transitionState = {
     startTime: 0
 };
 
+// Firework system
+let fireworkParticles = [];
+let fireworkGeometry = null;
+let fireworkMaterial = null;
+let fireworkPoints = null;
+
 function init3D() {
     try {
         // Check if Three.js is loaded
@@ -48,6 +54,7 @@ function init3D() {
 
         createPhotos();
         createDecorations();
+        initFireworkSystem();
         animate();
     } catch (e) {
         console.error('Error initializing 3D scene:', e);
@@ -209,6 +216,168 @@ function createDecorations() {
     scene.add(loveMesh);
 }
 
+// Initialize firework system
+function initFireworkSystem() {
+    const maxParticles = 500;
+    const positions = new Float32Array(maxParticles * 3);
+    const colors = new Float32Array(maxParticles * 3);
+    const sizes = new Float32Array(maxParticles);
+    const velocities = new Float32Array(maxParticles * 3);
+    const lifetimes = new Float32Array(maxParticles);
+    
+    fireworkGeometry = new THREE.BufferGeometry();
+    fireworkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    fireworkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    fireworkGeometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+    
+    fireworkGeometry.userData = {
+        positions: positions,
+        colors: colors,
+        sizes: sizes,
+        velocities: velocities,
+        lifetimes: lifetimes,
+        count: 0,
+        maxCount: maxParticles
+    };
+    
+    fireworkMaterial = new THREE.PointsMaterial({
+        size: 3.0, // Larger size for better visibility
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 1.0,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    
+    fireworkPoints = new THREE.Points(fireworkGeometry, fireworkMaterial);
+    scene.add(fireworkPoints);
+}
+
+// Create firework burst at position
+function createFireworkBurst(position, color, count = 50) {
+    const geo = fireworkGeometry.userData;
+    const startIdx = geo.count;
+    const endIdx = Math.min(startIdx + count, geo.maxCount);
+    const actualCount = endIdx - startIdx;
+    
+    if (actualCount <= 0) return;
+    
+    const colors = [
+        color || 0xFFD700, // Gold
+        0xFF0000, // Red
+        0x00FF00, // Green
+        0x0000FF, // Blue
+        0xFF00FF, // Magenta
+        0x00FFFF  // Cyan
+    ];
+    
+    for (let i = 0; i < actualCount; i++) {
+        const idx = startIdx + i;
+        
+        // Position
+        geo.positions[idx * 3] = position.x;
+        geo.positions[idx * 3 + 1] = position.y;
+        geo.positions[idx * 3 + 2] = position.z;
+        
+        // Random velocity (spherical explosion)
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const speed = 0.5 + Math.random() * 1.5;
+        
+        geo.velocities[idx * 3] = speed * Math.sin(phi) * Math.cos(theta);
+        geo.velocities[idx * 3 + 1] = speed * Math.sin(phi) * Math.sin(theta);
+        geo.velocities[idx * 3 + 2] = speed * Math.cos(phi);
+        
+        // Color (random from palette)
+        const particleColor = new THREE.Color(colors[Math.floor(Math.random() * colors.length)]);
+        geo.colors[idx * 3] = particleColor.r;
+        geo.colors[idx * 3 + 1] = particleColor.g;
+        geo.colors[idx * 3 + 2] = particleColor.b;
+        
+        // Size (larger for better visibility)
+        geo.sizes[idx] = 2.0 + Math.random() * 3.0;
+        
+        // Lifetime (longer for better visibility)
+        geo.lifetimes[idx] = 1.5;
+    }
+    
+    geo.count = endIdx;
+    fireworkGeometry.attributes.position.needsUpdate = true;
+    fireworkGeometry.attributes.color.needsUpdate = true;
+    fireworkGeometry.attributes.size.needsUpdate = true;
+}
+
+// Update firework particles
+function updateFireworks(deltaTime) {
+    const geo = fireworkGeometry.userData;
+    if (geo.count === 0) return;
+    
+    let activeCount = 0;
+    
+    for (let i = 0; i < geo.count; i++) {
+        if (geo.lifetimes[i] <= 0) continue;
+        
+        // Update position
+        geo.positions[i * 3] += geo.velocities[i * 3] * deltaTime * 60;
+        geo.positions[i * 3 + 1] += geo.velocities[i * 3 + 1] * deltaTime * 60;
+        geo.positions[i * 3 + 2] += geo.velocities[i * 3 + 2] * deltaTime * 60;
+        
+        // Apply gravity
+        geo.velocities[i * 3 + 1] -= 0.02 * deltaTime * 60;
+        
+        // Fade out (slower for longer visibility)
+        geo.lifetimes[i] -= deltaTime * 1.5;
+        
+        // Update size and opacity based on lifetime
+        const lifeRatio = Math.max(0, geo.lifetimes[i]);
+        geo.sizes[i] *= 0.98;
+        
+        // Fade color
+        geo.colors[i * 3] *= lifeRatio;
+        geo.colors[i * 3 + 1] *= lifeRatio;
+        geo.colors[i * 3 + 2] *= lifeRatio;
+        
+        if (geo.lifetimes[i] > 0) {
+            activeCount++;
+        }
+    }
+    
+    // Remove dead particles (simple approach: reset count)
+    if (activeCount === 0) {
+        geo.count = 0;
+    } else {
+        // Compact array (move active particles to front)
+        let writeIdx = 0;
+        for (let i = 0; i < geo.count; i++) {
+            if (geo.lifetimes[i] > 0) {
+                if (writeIdx !== i) {
+                    // Copy particle data
+                    geo.positions[writeIdx * 3] = geo.positions[i * 3];
+                    geo.positions[writeIdx * 3 + 1] = geo.positions[i * 3 + 1];
+                    geo.positions[writeIdx * 3 + 2] = geo.positions[i * 3 + 2];
+                    geo.velocities[writeIdx * 3] = geo.velocities[i * 3];
+                    geo.velocities[writeIdx * 3 + 1] = geo.velocities[i * 3 + 1];
+                    geo.velocities[writeIdx * 3 + 2] = geo.velocities[i * 3 + 2];
+                    geo.colors[writeIdx * 3] = geo.colors[i * 3];
+                    geo.colors[writeIdx * 3 + 1] = geo.colors[i * 3 + 1];
+                    geo.colors[writeIdx * 3 + 2] = geo.colors[i * 3 + 2];
+                    geo.sizes[writeIdx] = geo.sizes[i];
+                    geo.lifetimes[writeIdx] = geo.lifetimes[i];
+                }
+                writeIdx++;
+            }
+        }
+        geo.count = writeIdx;
+    }
+    
+    if (geo.count > 0) {
+        fireworkGeometry.attributes.position.needsUpdate = true;
+        fireworkGeometry.attributes.color.needsUpdate = true;
+        fireworkGeometry.attributes.size.needsUpdate = true;
+    }
+}
+
 function updateParticleGroup(group, type, targetState, speed, handRotY, time) {
     const positions = group.geometry.attributes.position.array;
     const sizes = group.geometry.attributes.size.array;
@@ -331,6 +500,60 @@ function startTransition(fromState, toState) {
     transitionState.progress = 0;
     transitionState.startTime = Date.now() * 0.001;
     previousState = fromState;
+    
+    // Create firework effects based on transition
+    createFireworkForTransition(fromState, toState);
+}
+
+// Create firework effects for state transitions
+function createFireworkForTransition(fromState, toState) {
+    if (!fireworkPoints || !camera) return;
+    
+    // Firework position (near camera, in front of scene)
+    const fireworkPos = new THREE.Vector3(
+        (Math.random() - 0.5) * 40,
+        (Math.random() - 0.5) * 40,
+        camera.position.z - 30 // Further in front for better visibility
+    );
+    
+    let color = 0xFFD700; // Default gold
+    let count = 50;
+    
+    // Different firework effects for different transitions
+    if (fromState === 'TREE' && toState === 'EXPLODE') {
+        // Big burst when exploding
+        color = 0xFF0000; // Red
+        count = 80;
+        // Multiple bursts
+        for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+                const pos = new THREE.Vector3(
+                    (Math.random() - 0.5) * 50,
+                    (Math.random() - 0.5) * 50,
+                    camera.position.z - 20
+                );
+                createFireworkBurst(pos, color, count);
+            }, i * 100);
+        }
+    } else if (toState === 'HEART') {
+        // Pink/red sparkles for heart
+        color = 0xFF69B4; // Pink
+        count = 60;
+        createFireworkBurst(fireworkPos, color, count);
+    } else if (toState === 'PHOTO') {
+        // Gold sparkles for photo
+        color = 0xFFD700; // Gold
+        count = 40;
+        createFireworkBurst(fireworkPos, color, count);
+    } else if (fromState === 'EXPLODE' && toState === 'TREE') {
+        // Green/gold when returning to tree
+        color = 0x00FF00; // Green
+        count = 50;
+        createFireworkBurst(fireworkPos, color, count);
+    } else {
+        // Default firework
+        createFireworkBurst(fireworkPos, color, count);
+    }
 }
 
 // Update transition progress
@@ -362,6 +585,10 @@ function animate() {
     
     // Update transition
     updateTransition(time);
+    
+    // Update fireworks
+    const deltaTime = 0.016; // ~60fps
+    updateFireworks(deltaTime);
     
     // Calculate transition progress with easing
     const easedProgress = transitionState.isActive ? easeInOutCubic(transitionState.progress) : 1;
