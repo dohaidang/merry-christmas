@@ -1,6 +1,127 @@
 // ==========================================
 // HAND TRACKING
 // ==========================================
+
+// Hand landmarks connections (MediaPipe Hands structure)
+const HAND_CONNECTIONS = [
+    [0, 1], [1, 2], [2, 3], [3, 4],           // Thumb
+    [0, 5], [5, 6], [6, 7], [7, 8],           // Index
+    [0, 9], [9, 10], [10, 11], [11, 12],     // Middle
+    [0, 13], [13, 14], [14, 15], [15, 16],   // Ring
+    [0, 17], [17, 18], [18, 19], [19, 20],   // Pinky
+    [5, 9], [9, 13], [13, 17]                 // Palm
+];
+
+// Draw hand landmarks and skeleton
+function drawHandLandmarks(ctx, landmarks, width, height) {
+    if (!landmarks || landmarks.length === 0) return;
+    
+    // Draw connections (skeleton) first
+    ctx.strokeStyle = '#00FF00';
+    ctx.lineWidth = 2;
+    HAND_CONNECTIONS.forEach(([start, end]) => {
+        if (landmarks[start] && landmarks[end]) {
+            ctx.beginPath();
+            ctx.moveTo(landmarks[start].x * width, landmarks[start].y * height);
+            ctx.lineTo(landmarks[end].x * width, landmarks[end].y * height);
+            ctx.stroke();
+        }
+    });
+
+    // Draw landmarks (dots) on top
+    landmarks.forEach((landmark, idx) => {
+        if (!landmark) return;
+        
+        const x = landmark.x * width;
+        const y = landmark.y * height;
+        const radius = (idx === 0 || [4, 8, 12, 16, 20].includes(idx)) ? 3.5 : 2.5;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        
+        // Color code important points
+        if (idx === 0) {
+            ctx.fillStyle = '#FF0000'; // Wrist - Red
+        } else if ([4, 8, 12, 16, 20].includes(idx)) {
+            ctx.fillStyle = '#FFD700'; // Fingertips - Gold
+        } else {
+            ctx.fillStyle = '#00FF00'; // Other points - Green
+        }
+        ctx.fill();
+    });
+}
+
+// Draw gesture indicator
+function drawGestureIndicator(ctx, gesture, width, height) {
+    const indicators = {
+        'TREE': { icon: '👊', color: '#FFD700', text: 'FIST' },
+        'EXPLODE': { icon: '🖐️', color: '#00FF00', text: 'OPEN' },
+        'PHOTO': { icon: '👌', color: '#FF00FF', text: 'PINCH' },
+        'HEART': { icon: '🫶', color: '#FF69B4', text: 'HEART' }
+    };
+    
+    const indicator = indicators[gesture];
+    if (!indicator) return;
+    
+    const boxWidth = 55;
+    const boxHeight = 22;
+    const padding = 5;
+    
+    // Background with rounded corners effect
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(padding, padding, boxWidth, boxHeight);
+    
+    // Border with glow
+    ctx.strokeStyle = indicator.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(padding, padding, boxWidth, boxHeight);
+    
+    // Text with shadow for better visibility
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowBlur = 2;
+    ctx.fillStyle = indicator.color;
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(indicator.icon + ' ' + indicator.text, padding + 3, padding + boxHeight / 2);
+    ctx.shadowBlur = 0;
+}
+
+// Draw state label
+function drawStateLabel(ctx, state, width, height) {
+    const stateTexts = {
+        'TREE': '🌲 TREE',
+        'EXPLODE': '💥 EXPLODE',
+        'PHOTO': '📸 PHOTO',
+        'HEART': '❤️ HEART'
+    };
+    
+    const stateText = stateTexts[state] || state;
+    const labelHeight = 18;
+    
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(0, height - labelHeight, width, labelHeight);
+    
+    // Top border
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, height - labelHeight);
+    ctx.lineTo(width, height - labelHeight);
+    ctx.stroke();
+    
+    // Text with shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowBlur = 2;
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(stateText, width / 2, height - labelHeight / 2);
+    ctx.shadowBlur = 0;
+}
+
 async function startSystem() {
     if (hasError) return;
     if (isSystemStarted) return;
@@ -25,7 +146,23 @@ async function startSystem() {
 
     const video = document.getElementsByClassName('input_video')[0];
     const canvas = document.getElementById('camera-preview');
+    
+    if (!canvas) {
+        console.error('Camera preview canvas not found!');
+        return;
+    }
+    
+    // Set canvas size to match CSS display size (200x150)
+    canvas.width = 200;
+    canvas.height = 150;
+    
     const ctx = canvas.getContext('2d');
+    
+    // Enable image smoothing for better quality
+    ctx.imageSmoothingEnabled = true;
+    
+    // Make sure canvas is visible
+    canvas.style.display = 'block';
     
     // On mobile, skip camera if not available (use touch instead)
     if (CONFIG.isMobile) {
@@ -67,9 +204,28 @@ function startCameraHandTracking(video, canvas, ctx) {
 
     hands.onResults(results => {
         try {
-            ctx.clearRect(0,0,100,75); 
-            ctx.drawImage(results.image, 0, 0, 100, 75);
+            // Canvas actual size (matches CSS: 120x90)
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight); 
+            
+            // Draw video frame (scaled to fit canvas)
+            if (results.image) {
+                ctx.drawImage(results.image, 0, 0, canvasWidth, canvasHeight);
+            }
 
+            // Draw hand landmarks if detected
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                results.multiHandLandmarks.forEach(landmarks => {
+                    if (landmarks && landmarks.length > 0) {
+                        drawHandLandmarks(ctx, landmarks, canvasWidth, canvasHeight);
+                    }
+                });
+            }
+
+            // Detect gestures and update state
             if (results.multiHandLandmarks.length === 2) {
                 const h1 = results.multiHandLandmarks[0]; 
                 const h2 = results.multiHandLandmarks[1];
@@ -77,11 +233,8 @@ function startCameraHandTracking(video, canvas, ctx) {
                 const distThumb = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
                 if (distIndex < 0.15 && distThumb < 0.15) {
                     state = 'HEART'; 
-                    return;
                 }
-            }
-
-            if(results.multiHandLandmarks.length > 0) {
+            } else if (results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
                 handX = lm[9].x; 
                 const tips = [8,12,16,20]; 
@@ -101,6 +254,15 @@ function startCameraHandTracking(video, canvas, ctx) {
             } else {
                 state = 'TREE'; 
             }
+
+            // Draw gesture indicator (only when hand is detected)
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                drawGestureIndicator(ctx, state, canvasWidth, canvasHeight);
+            }
+            
+            // Always draw state label
+            drawStateLabel(ctx, state, canvasWidth, canvasHeight);
+            
         } catch (e) {
             console.error('Error processing hand results:', e);
         }
