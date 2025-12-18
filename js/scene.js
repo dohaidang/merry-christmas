@@ -150,27 +150,25 @@ function createParticleSystem(type, count, size) {
     });
 
     const points = new THREE.Points(geo, mat);
+    // Render particles behind photos
+    points.renderOrder = 1;
     scene.add(points);
     return points;
 }
 
 function createPhotos() {
     const geo = new THREE.PlaneGeometry(8, 8);
-    const borderGeo = new THREE.PlaneGeometry(9, 9); 
-    const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); 
 
     for(let i=0; i<5; i++) {
         const mat = new THREE.MeshBasicMaterial({ 
             map: photoTextures[i], 
             side: THREE.DoubleSide,
-            transparent: true,
+            transparent: false, // No transparency needed for photos
             opacity: 1.0
         });
         const mesh = new THREE.Mesh(geo, mat);
-        const border = new THREE.Mesh(borderGeo, borderMat);
-        border.position.z = -0.1; 
-        mesh.add(border);
-        mesh.visible = false; mesh.scale.set(0,0,0);
+        mesh.visible = false; 
+        mesh.scale.set(0,0,0);
         scene.add(mesh);
         photoMeshes.push(mesh);
     }
@@ -257,6 +255,8 @@ function initFireworkSystem() {
     });
     
     fireworkPoints = new THREE.Points(fireworkGeometry, fireworkMaterial);
+    // Render fireworks behind photos
+    fireworkPoints.renderOrder = 1;
     scene.add(fireworkPoints);
 }
 
@@ -322,6 +322,8 @@ function initSnowSystem() {
     });
     
     snowPoints = new THREE.Points(snowGeometry, snowMaterial);
+    // Render snow behind photos
+    snowPoints.renderOrder = 1;
     scene.add(snowPoints);
 }
 
@@ -695,30 +697,53 @@ function animate() {
     // Update transition
     updateTransition(time);
     
-    // Update fireworks
-    const deltaTime = 0.016; // ~60fps
-    updateFireworks(deltaTime);
-    
-    // Update snow
-    updateSnow(time);
-    
     // Calculate transition progress with easing
     const easedProgress = transitionState.isActive ? easeInOutCubic(transitionState.progress) : 1;
     
-    // Use transition state for particle updates during transition
-    const currentState = transitionState.isActive ? transitionState.to : state;
-    const speed = transitionState.isActive ? 
-        0.08 * (0.3 + easedProgress * 0.7) : // Slower during transition
-        0.08;
-    const handRotY = (handX - 0.5) * 4.0;
+    // IMPORTANT: Hide/show particles BEFORE updating them
+    // In PHOTO state, hide all particles to prevent yellow overlay on photos
+    if (state === 'PHOTO') {
+        if (groupGold) groupGold.visible = false;
+        if (groupRed) groupRed.visible = false;
+        if (groupGift) groupGift.visible = false;
+        if (snowPoints) snowPoints.visible = false;
+        if (fireworkPoints) fireworkPoints.visible = false;
+    } else {
+        if (groupGold) groupGold.visible = true;
+        if (groupRed) groupRed.visible = true;
+        if (groupGift) groupGift.visible = true;
+        if (snowPoints) snowPoints.visible = true;
+        if (fireworkPoints) fireworkPoints.visible = true;
+    }
+    
+    // Only update particles if they are visible
+    if (state !== 'PHOTO') {
+        const currentState = transitionState.isActive ? transitionState.to : state;
+        const speed = transitionState.isActive ? 
+            0.08 * (0.3 + easedProgress * 0.7) : // Slower during transition
+            0.08;
+        const handRotY = (handX - 0.5) * 4.0;
 
-    updateParticleGroup(groupGold, 'gold', currentState, speed, handRotY, time);
-    updateParticleGroup(groupRed, 'red', currentState, speed, handRotY, time);
-    updateParticleGroup(groupGift, 'gift', currentState, speed, handRotY, time);
+        updateParticleGroup(groupGold, 'gold', currentState, speed, handRotY, time);
+        updateParticleGroup(groupRed, 'red', currentState, speed, handRotY, time);
+        updateParticleGroup(groupGift, 'gift', currentState, speed, handRotY, time);
+        
+        // Update fireworks
+        const deltaTime = 0.016; // ~60fps
+        updateFireworks(deltaTime);
+        
+        // Update snow
+        updateSnow(time);
+    }
 
     photoMeshes.forEach((mesh, i) => {
         if(!mesh.material.map && photoTextures[i]) {
-            mesh.material.map = photoTextures[i]; mesh.material.needsUpdate = true;
+            mesh.material.map = photoTextures[i]; 
+            mesh.material.needsUpdate = true;
+        }
+        // Ensure material is properly set
+        if (mesh.material && !mesh.material.transparent) {
+            mesh.material.transparent = true;
         }
     });
 
@@ -784,8 +809,7 @@ function animate() {
     } else if (state === 'EXPLODE') {
         // Fade out decorations, fade in photos
         const photoOpacity = transitionState.isActive && transitionState.to === 'EXPLODE' ? 
-            transitionOpacity : (transitionState.isActive && transitionState.from === 'EXPLODE' ? 
-            reverseOpacity : 1);
+            Math.max(0.5, transitionOpacity) : 1; // Minimum 0.5 during transition, 1 when stable
         
         const decorationOpacity = transitionState.isActive && transitionState.from === 'TREE' ? 
             reverseOpacity : 0;
@@ -806,43 +830,54 @@ function animate() {
         const angleStep = (Math.PI * 2) / 5;
         let bestIdx = 0; let maxZ = -999;
         photoMeshes.forEach((mesh, i) => {
-            mesh.visible = photoOpacity > 0.01;
-            if (mesh.visible) {
-                const angle = baseAngle + i * angleStep;
-                const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
-                const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
-                const y = Math.sin(time + i) * 3; 
-                mesh.position.lerp(new THREE.Vector3(x, y, z), 0.15);
-                mesh.lookAt(camera.position);
-                mesh.material.opacity = photoOpacity;
-                
-                if (z > maxZ) { maxZ = z; bestIdx = i; }
-                if (z > 5) { 
-                    const ds = (0.3 + photoOpacity * 0.7) * (1.0 + (z/CONFIG.photoOrbitRadius)*0.8); 
-                    mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
-                } else {
-                    const ds = 0.3 + photoOpacity * 0.3;
-                    mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
-                }
+            // Always show photos in EXPLODE state
+            mesh.visible = true;
+            const angle = baseAngle + i * angleStep;
+            const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
+            const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
+            const y = Math.sin(time + i) * 3; 
+            mesh.position.lerp(new THREE.Vector3(x, y, z), 0.15);
+            mesh.lookAt(camera.position);
+            mesh.material.opacity = Math.max(0.7, photoOpacity); // Minimum opacity 0.7 for visibility
+            // Ensure material map is set
+            if (!mesh.material.map && photoTextures[i]) {
+                mesh.material.map = photoTextures[i];
+                mesh.material.needsUpdate = true;
+            }
+            
+            if (z > maxZ) { maxZ = z; bestIdx = i; }
+            if (z > 5) { 
+                const ds = Math.max(0.5, (0.5 + photoOpacity * 0.5) * (1.0 + (z/CONFIG.photoOrbitRadius)*0.8)); 
+                mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
+            } else {
+                const ds = Math.max(0.5, 0.5 + photoOpacity * 0.3);
+                mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
             }
         });
         selectedIndex = bestIdx;
 
     } else if (state === 'PHOTO') {
         loveMesh.visible = false;
+        titleMesh.visible = false;
+        starMesh.visible = false;
+        
+        // Particles already hidden at the beginning of animate()
+        
         const photoOpacity = transitionState.isActive && transitionState.to === 'PHOTO' ? 
-            transitionOpacity : 1;
+            Math.max(0.7, transitionOpacity) : 1;
         
         photoMeshes.forEach((mesh, i) => {
             if (i === selectedIndex) {
-                mesh.visible = photoOpacity > 0.01;
-                if (mesh.visible) {
-                    mesh.position.lerp(new THREE.Vector3(0, 0, 60), 0.15);
-                    const targetScale = (2 + photoOpacity * 3); // Scale from 2 to 5
-                    mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
-                    mesh.lookAt(camera.position); 
-                    mesh.rotation.z = 0;
-                    mesh.material.opacity = photoOpacity;
+                mesh.visible = true;
+                mesh.position.lerp(new THREE.Vector3(0, 0, 60), 0.15);
+                const targetScale = Math.max(4, 2 + photoOpacity * 3);
+                mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+                mesh.lookAt(camera.position); 
+                mesh.rotation.z = 0;
+                mesh.material.opacity = 1.0; // Full opacity
+                if (!mesh.material.map && photoTextures[i]) {
+                    mesh.material.map = photoTextures[i];
+                    mesh.material.needsUpdate = true;
                 }
             } else {
                 mesh.scale.lerp(new THREE.Vector3(0,0,0), 0.15);
