@@ -7,8 +7,19 @@ let photoMeshes = [];
 let titleMesh, starMesh, loveMesh;
 
 let state = 'TREE'; 
+let previousState = 'TREE';
 let selectedIndex = 0;
 let handX = 0.5;
+
+// Transition system
+let transitionState = {
+    isActive: false,
+    from: 'TREE',
+    to: 'TREE',
+    progress: 0, // 0 to 1
+    duration: 0.8, // seconds
+    startTime: 0
+};
 
 function init3D() {
     try {
@@ -134,7 +145,12 @@ function createPhotos() {
     const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 }); 
 
     for(let i=0; i<5; i++) {
-        const mat = new THREE.MeshBasicMaterial({ map: photoTextures[i], side: THREE.DoubleSide });
+        const mat = new THREE.MeshBasicMaterial({ 
+            map: photoTextures[i], 
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 1.0
+        });
         const mesh = new THREE.Mesh(geo, mat);
         const border = new THREE.Mesh(borderGeo, borderMat);
         border.position.z = -0.1; 
@@ -259,15 +275,59 @@ function updateParticleGroup(group, type, targetState, speed, handRotY, time) {
     }
 }
 
+// Start transition when state changes
+function startTransition(fromState, toState) {
+    transitionState.isActive = true;
+    transitionState.from = fromState;
+    transitionState.to = toState;
+    transitionState.progress = 0;
+    transitionState.startTime = Date.now() * 0.001;
+    previousState = fromState;
+}
+
+// Update transition progress
+function updateTransition(time) {
+    if (!transitionState.isActive) return;
+    
+    const elapsed = time - transitionState.startTime;
+    transitionState.progress = Math.min(elapsed / transitionState.duration, 1);
+    
+    if (transitionState.progress >= 1) {
+        transitionState.isActive = false;
+        transitionState.progress = 1;
+    }
+}
+
+// Easing function for smooth transitions
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 function animate() {
     requestAnimationFrame(animate);
     const time = Date.now() * 0.001;
-    const speed = 0.08;
+    
+    // Check for state changes
+    if (state !== previousState) {
+        startTransition(previousState, state);
+    }
+    
+    // Update transition
+    updateTransition(time);
+    
+    // Calculate transition progress with easing
+    const easedProgress = transitionState.isActive ? easeInOutCubic(transitionState.progress) : 1;
+    
+    // Use transition state for particle updates during transition
+    const currentState = transitionState.isActive ? transitionState.to : state;
+    const speed = transitionState.isActive ? 
+        0.08 * (0.3 + easedProgress * 0.7) : // Slower during transition
+        0.08;
     const handRotY = (handX - 0.5) * 4.0;
 
-    updateParticleGroup(groupGold, 'gold', state, speed, handRotY, time);
-    updateParticleGroup(groupRed, 'red', state, speed, handRotY, time);
-    updateParticleGroup(groupGift, 'gift', state, speed, handRotY, time);
+    updateParticleGroup(groupGold, 'gold', currentState, speed, handRotY, time);
+    updateParticleGroup(groupRed, 'red', currentState, speed, handRotY, time);
+    updateParticleGroup(groupGift, 'gift', currentState, speed, handRotY, time);
 
     photoMeshes.forEach((mesh, i) => {
         if(!mesh.material.map && photoTextures[i]) {
@@ -275,53 +335,138 @@ function animate() {
         }
     });
 
+    // Apply smooth transitions to meshes
+    const transitionOpacity = transitionState.isActive ? easedProgress : 1;
+    const reverseOpacity = transitionState.isActive ? 1 - easedProgress : 0;
+    
     if (state === 'TREE') {
-        titleMesh.visible = true; starMesh.visible = true; loveMesh.visible = false;
-        titleMesh.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+        // Fade in title and star
+        const targetOpacity = transitionState.isActive && transitionState.to === 'TREE' ? 
+            transitionOpacity : (transitionState.isActive && transitionState.from === 'TREE' ? 
+            reverseOpacity : 1);
+        
+        titleMesh.visible = targetOpacity > 0.01;
+        starMesh.visible = targetOpacity > 0.01;
+        loveMesh.visible = false;
+        
+        if (titleMesh.visible) {
+            const targetScale = 0.5 + targetOpacity * 0.5; // Scale from 0.5 to 1
+            titleMesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+            titleMesh.material.opacity = targetOpacity;
+        }
+        
         starMesh.rotation.z -= 0.02; 
-        starMesh.material.opacity = 0.7 + 0.3*Math.sin(time*5);
-        photoMeshes.forEach(m => { m.scale.lerp(new THREE.Vector3(0,0,0), 0.1); m.visible = false; });
+        if (starMesh.visible) {
+            starMesh.material.opacity = (0.7 + 0.3*Math.sin(time*5)) * targetOpacity;
+        }
+        
+        photoMeshes.forEach(m => { 
+            m.scale.lerp(new THREE.Vector3(0,0,0), 0.15); 
+            m.visible = false; 
+        });
 
     } else if (state === 'HEART') {
-        titleMesh.visible = false; starMesh.visible = false; loveMesh.visible = true;
+        // Fade out title/star, fade in love
+        const loveOpacity = transitionState.isActive && transitionState.to === 'HEART' ? 
+            transitionOpacity : (transitionState.isActive && transitionState.from === 'HEART' ? 
+            reverseOpacity : 1);
+        
+        const titleOpacity = transitionState.isActive && transitionState.from === 'TREE' ? 
+            reverseOpacity : 0;
+        
+        titleMesh.visible = titleOpacity > 0.01;
+        starMesh.visible = titleOpacity > 0.01;
+        loveMesh.visible = loveOpacity > 0.01;
+        
+        if (titleMesh.visible) {
+            titleMesh.material.opacity = titleOpacity;
+            titleMesh.scale.lerp(new THREE.Vector3(titleOpacity, titleOpacity, titleOpacity), 0.15);
+        }
+        if (starMesh.visible) {
+            starMesh.material.opacity = titleOpacity;
+        }
+        
+        if (loveMesh.visible) {
+            const s = (0.5 + loveOpacity * 0.5) * (1 + Math.abs(Math.sin(time*3))*0.1);
+            loveMesh.scale.set(s, s, 1);
+            loveMesh.material.opacity = loveOpacity;
+        }
+        
         photoMeshes.forEach(m => { m.visible = false; });
-        const s = 1 + Math.abs(Math.sin(time*3))*0.1;
-        loveMesh.scale.set(s,s,1);
 
     } else if (state === 'EXPLODE') {
-        titleMesh.visible = false; starMesh.visible = false; loveMesh.visible = false;
+        // Fade out decorations, fade in photos
+        const photoOpacity = transitionState.isActive && transitionState.to === 'EXPLODE' ? 
+            transitionOpacity : (transitionState.isActive && transitionState.from === 'EXPLODE' ? 
+            reverseOpacity : 1);
+        
+        const decorationOpacity = transitionState.isActive && transitionState.from === 'TREE' ? 
+            reverseOpacity : 0;
+        
+        titleMesh.visible = decorationOpacity > 0.01;
+        starMesh.visible = decorationOpacity > 0.01;
+        loveMesh.visible = false;
+        
+        if (titleMesh.visible) {
+            titleMesh.material.opacity = decorationOpacity;
+            titleMesh.scale.lerp(new THREE.Vector3(decorationOpacity, decorationOpacity, decorationOpacity), 0.15);
+        }
+        if (starMesh.visible) {
+            starMesh.material.opacity = decorationOpacity;
+        }
+        
         const baseAngle = groupGold.rotation.y; 
         const angleStep = (Math.PI * 2) / 5;
         let bestIdx = 0; let maxZ = -999;
         photoMeshes.forEach((mesh, i) => {
-            mesh.visible = true;
-            const angle = baseAngle + i * angleStep;
-            const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
-            const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
-            const y = Math.sin(time + i) * 3; 
-            mesh.position.lerp(new THREE.Vector3(x, y, z), 0.1);
-            mesh.lookAt(camera.position);
-            if (z > maxZ) { maxZ = z; bestIdx = i; }
-            if (z > 5) { 
-                const ds = 1.0 + (z/CONFIG.photoOrbitRadius)*0.8; 
-                mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.1);
-            } else {
-                mesh.scale.lerp(new THREE.Vector3(0.6, 0.6, 0.6), 0.1);
+            mesh.visible = photoOpacity > 0.01;
+            if (mesh.visible) {
+                const angle = baseAngle + i * angleStep;
+                const x = Math.sin(angle) * CONFIG.photoOrbitRadius;
+                const z = Math.cos(angle) * CONFIG.photoOrbitRadius;
+                const y = Math.sin(time + i) * 3; 
+                mesh.position.lerp(new THREE.Vector3(x, y, z), 0.15);
+                mesh.lookAt(camera.position);
+                mesh.material.opacity = photoOpacity;
+                
+                if (z > maxZ) { maxZ = z; bestIdx = i; }
+                if (z > 5) { 
+                    const ds = (0.3 + photoOpacity * 0.7) * (1.0 + (z/CONFIG.photoOrbitRadius)*0.8); 
+                    mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
+                } else {
+                    const ds = 0.3 + photoOpacity * 0.3;
+                    mesh.scale.lerp(new THREE.Vector3(ds, ds, ds), 0.15);
+                }
             }
         });
         selectedIndex = bestIdx;
 
     } else if (state === 'PHOTO') {
         loveMesh.visible = false;
+        const photoOpacity = transitionState.isActive && transitionState.to === 'PHOTO' ? 
+            transitionOpacity : 1;
+        
         photoMeshes.forEach((mesh, i) => {
             if (i === selectedIndex) {
-                mesh.position.lerp(new THREE.Vector3(0, 0, 60), 0.1);
-                mesh.scale.lerp(new THREE.Vector3(5, 5, 5), 0.1);
-                mesh.lookAt(camera.position); mesh.rotation.z = 0;
+                mesh.visible = photoOpacity > 0.01;
+                if (mesh.visible) {
+                    mesh.position.lerp(new THREE.Vector3(0, 0, 60), 0.15);
+                    const targetScale = (2 + photoOpacity * 3); // Scale from 2 to 5
+                    mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+                    mesh.lookAt(camera.position); 
+                    mesh.rotation.z = 0;
+                    mesh.material.opacity = photoOpacity;
+                }
             } else {
-                mesh.scale.lerp(new THREE.Vector3(0,0,0), 0.1);
+                mesh.scale.lerp(new THREE.Vector3(0,0,0), 0.15);
+                mesh.visible = false;
             }
         });
+    }
+    
+    // Update previous state
+    if (!transitionState.isActive) {
+        previousState = state;
     }
     renderer.render(scene, camera);
 }
