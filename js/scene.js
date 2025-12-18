@@ -124,14 +124,16 @@ function createParticleSystem(type, count, size) {
         phases: phases, baseColor: baseColor, baseSize: size
     };
 
+    // Enhanced particle material with glow effect
     const mat = new THREE.PointsMaterial({
         size: size,
+        sizeAttenuation: true,
         map: textures[type],
-        transparent: true, opacity: 1.0,
+        transparent: true, 
+        opacity: 1.0,
         vertexColors: true, 
-        blending: (type === 'gift') ? THREE.NormalBlending : THREE.AdditiveBlending, 
-        depthWrite: false,
-        sizeAttenuation: true
+        blending: (type === 'gift') ? THREE.NormalBlending : THREE.AdditiveBlending,
+        depthWrite: false // Better for additive blending
     });
 
     const points = new THREE.Points(geo, mat);
@@ -225,23 +227,39 @@ function updateParticleGroup(group, type, targetState, speed, handRotY, time) {
     
     const count = positions.length / 3;
     
+    // Color cycling helper
+    const tempColor = new THREE.Color();
+    const hueShift = Math.sin(time * 0.5) * 0.1;
+    
     if (targetState === 'TREE') {
         group.rotation.y += 0.003;
         
         for(let i=0; i<count; i++) {
-            sizes[i] = baseSize;
+            // Enhanced size pulsing
+            const sizePulse = 1.0 + Math.sin(time * 5 + phases[i]) * 0.15;
+            sizes[i] = baseSize * sizePulse;
+            
+            // Enhanced brightness
             let brightness = 1.0;
             if(type === 'red') {
-                brightness = 0.5 + 0.5 * Math.sin(time * 3 + phases[i]);
+                brightness = 0.6 + 0.4 * Math.sin(time * 3 + phases[i]);
             } else if(type === 'gold') {
-                brightness = 0.8 + 0.4 * Math.sin(time * 10 + phases[i]);
+                brightness = 0.85 + 0.35 * Math.sin(time * 10 + phases[i]);
             }
-            colors[i*3]   = baseColor.r * brightness;
-            colors[i*3+1] = baseColor.g * brightness;
-            colors[i*3+2] = baseColor.b * brightness;
+            
+            // Color cycling with hue shift
+            tempColor.copy(baseColor);
+            tempColor.offsetHSL(hueShift, 0, (brightness - 1.0) * 0.1);
+            
+            colors[i*3]   = tempColor.r;
+            colors[i*3+1] = tempColor.g;
+            colors[i*3+2] = tempColor.b;
         }
         group.geometry.attributes.color.needsUpdate = true;
         group.geometry.attributes.size.needsUpdate = true;
+        
+        // Material opacity pulsing for glow
+        group.material.opacity = 0.85 + Math.sin(time * 2) * 0.15;
 
     } else if (targetState === 'HEART') {
         group.rotation.y = 0;
@@ -249,29 +267,59 @@ function updateParticleGroup(group, type, targetState, speed, handRotY, time) {
         group.scale.set(beatScale, beatScale, beatScale);
 
         for(let i=0; i<count; i++) {
-            colors[i*3] = baseColor.r; colors[i*3+1] = baseColor.g; colors[i*3+2] = baseColor.b;
-            if (i % 3 === 0) sizes[i] = baseSize;
-            else sizes[i] = 0;
+            if (i % 3 === 0) {
+                // Heart particles with pulsing size
+                const heartPulse = 1.0 + Math.sin(time * 4 + phases[i]) * 0.2;
+                sizes[i] = baseSize * heartPulse;
+                
+                // Pink/red color with pulsing
+                const heartBrightness = 0.8 + Math.sin(time * 3) * 0.2;
+                tempColor.setHSL(0.95, 0.8, heartBrightness * 0.7);
+                
+                colors[i*3] = tempColor.r;
+                colors[i*3+1] = tempColor.g;
+                colors[i*3+2] = tempColor.b;
+            } else {
+                sizes[i] = 0;
+            }
         }
         group.geometry.attributes.color.needsUpdate = true;
         group.geometry.attributes.size.needsUpdate = true;
+        
+        // Enhanced glow for heart
+        group.material.opacity = 0.9 + Math.sin(time * 3) * 0.1;
 
     } else {
         group.scale.set(1,1,1);
         group.rotation.y += (handRotY - group.rotation.y) * 0.1;
 
         for(let i=0; i<count; i++) {
-            sizes[i] = baseSize;
+            // Enhanced size pulsing for explode state
+            const explodePulse = 1.0 + Math.sin(time * 8 + phases[i]) * 0.25;
+            sizes[i] = baseSize * explodePulse;
+            
+            // Enhanced brightness
             let brightness = 1.0;
             if(type === 'gold' || type === 'red') {
-                brightness = 0.8 + 0.5 * Math.sin(time * 12 + phases[i]);
+                brightness = 0.85 + 0.5 * Math.sin(time * 12 + phases[i]);
+            } else if(type === 'gift') {
+                brightness = 0.9 + 0.3 * Math.sin(time * 6 + phases[i]);
             }
-            colors[i*3]   = baseColor.r * brightness;
-            colors[i*3+1] = baseColor.g * brightness;
-            colors[i*3+2] = baseColor.b * brightness;
+            
+            // Color cycling with more intensity
+            const explodeHueShift = Math.sin(time * 1.5 + phases[i] * 0.1) * 0.15;
+            tempColor.copy(baseColor);
+            tempColor.offsetHSL(explodeHueShift, 0, (brightness - 1.0) * 0.05);
+            
+            colors[i*3]   = tempColor.r;
+            colors[i*3+1] = tempColor.g;
+            colors[i*3+2] = tempColor.b;
         }
         group.geometry.attributes.size.needsUpdate = true;
         group.geometry.attributes.color.needsUpdate = true;
+        
+        // Enhanced glow for explode state
+        group.material.opacity = 0.9 + Math.sin(time * 4) * 0.1;
     }
 }
 
