@@ -107,6 +107,74 @@
         .error-message button {
             margin-top: 20px; padding: 10px 30px; font-size: 14px;
         }
+
+        /* Controls Panel */
+        #controls-panel {
+            position: fixed; top: 15px; left: 15px; z-index: 200;
+            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(255, 215, 0, 0.5);
+            border-radius: 15px; padding: 15px; display: none;
+            backdrop-filter: blur(10px); min-width: 200px;
+        }
+        #controls-panel.active { display: block; }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group:last-child { margin-bottom: 0; }
+
+        .control-label {
+            color: #FFD700; font-size: 12px; margin-bottom: 5px;
+            display: block; font-weight: bold;
+        }
+
+        .control-btn {
+            background: linear-gradient(to bottom, #D32F2F, #8B0000);
+            color: #FFF; border: 2px solid #FFD700;
+            padding: 8px 15px; border-radius: 20px;
+            font-weight: 600; font-size: 13px; cursor: pointer;
+            width: 100%; transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+        }
+        .control-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+        }
+        .control-btn:active { transform: scale(0.95); }
+
+        .volume-container {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .volume-slider {
+            flex: 1; height: 6px; background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px; outline: none; cursor: pointer;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            appearance: none; width: 16px; height: 16px;
+            background: #FFD700; border-radius: 50%;
+            cursor: pointer; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        .volume-slider::-moz-range-thumb {
+            width: 16px; height: 16px; background: #FFD700;
+            border-radius: 50%; cursor: pointer;
+            border: none; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        .volume-value {
+            color: #FFF; font-size: 12px; min-width: 35px;
+            text-align: right; font-weight: bold;
+        }
+
+        #toggle-controls {
+            position: fixed; top: 15px; left: 15px; z-index: 201;
+            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(255, 215, 0, 0.5);
+            border-radius: 50%; width: 45px; height: 45px;
+            color: #FFD700; font-size: 20px; cursor: pointer;
+            display: none; align-items: center; justify-content: center;
+            transition: all 0.3s; backdrop-filter: blur(10px);
+        }
+        #toggle-controls:hover {
+            background: rgba(0, 0, 0, 0.9);
+            border-color: #FFD700; transform: scale(1.1);
+        }
     </style>
 </head>
 <body>
@@ -128,6 +196,39 @@
     </div>
 
     <div id="error-log"></div>
+    
+    <!-- Controls Toggle Button -->
+    <div id="toggle-controls" onclick="toggleControls()" title="Toggle Controls">⚙️</div>
+    
+    <!-- Controls Panel -->
+    <div id="controls-panel">
+        <div class="control-group">
+            <button class="control-btn" id="btnMute" onclick="toggleMute()">
+                <span id="mute-icon">🔊</span> <span id="mute-text">Mute</span>
+            </button>
+        </div>
+        
+        <div class="control-group">
+            <label class="control-label">Volume</label>
+            <div class="volume-container">
+                <input type="range" class="volume-slider" id="volumeSlider" 
+                       min="0" max="100" value="100" oninput="setVolume(this.value)">
+                <span class="volume-value" id="volumeValue">100%</span>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <button class="control-btn" onclick="toggleFullscreen()">
+                <span id="fullscreen-icon">🗖</span> <span id="fullscreen-text">Fullscreen</span>
+            </button>
+        </div>
+        
+        <div class="control-group">
+            <button class="control-btn" onclick="resetScene()">
+                🔄 Reset
+            </button>
+        </div>
+    </div>
     
     <div id="ui-layer">
         <div class="guide">
@@ -288,6 +389,114 @@
         let state = 'TREE'; 
         let selectedIndex = 0;
         let handX = 0.5;
+        let isMuted = false;
+        let isFullscreen = false;
+
+        // ==========================================
+        // 2.5. CONTROLS FUNCTIONS
+        // ==========================================
+        function toggleControls() {
+            const panel = document.getElementById('controls-panel');
+            panel.classList.toggle('active');
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            bgMusic.muted = isMuted;
+            
+            const icon = document.getElementById('mute-icon');
+            const text = document.getElementById('mute-text');
+            
+            if (isMuted) {
+                icon.textContent = '🔇';
+                text.textContent = 'Unmute';
+            } else {
+                icon.textContent = '🔊';
+                text.textContent = 'Mute';
+            }
+        }
+
+        function setVolume(value) {
+            bgMusic.volume = value / 100;
+            document.getElementById('volumeValue').textContent = value + '%';
+        }
+
+        function toggleFullscreen() {
+            if (!isFullscreen) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen();
+                } else if (document.documentElement.msRequestFullscreen) {
+                    document.documentElement.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        }
+
+        function resetScene() {
+            if (!scene) return;
+            
+            state = 'TREE';
+            selectedIndex = 0;
+            handX = 0.5;
+            
+            if (groupGold) {
+                groupGold.rotation.y = 0;
+                groupGold.scale.set(1, 1, 1);
+            }
+            if (groupRed) {
+                groupRed.rotation.y = 0;
+                groupRed.scale.set(1, 1, 1);
+            }
+            if (groupGift) {
+                groupGift.rotation.y = 0;
+                groupGift.scale.set(1, 1, 1);
+            }
+            
+            if (titleMesh) titleMesh.visible = true;
+            if (starMesh) starMesh.visible = true;
+            if (loveMesh) loveMesh.visible = false;
+            
+            photoMeshes.forEach(mesh => {
+                mesh.visible = false;
+                mesh.scale.set(0, 0, 0);
+            });
+        }
+
+        // Listen for fullscreen changes
+        document.addEventListener('fullscreenchange', () => {
+            isFullscreen = !!document.fullscreenElement;
+            updateFullscreenButton();
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            isFullscreen = !!document.webkitFullscreenElement;
+            updateFullscreenButton();
+        });
+        document.addEventListener('msfullscreenchange', () => {
+            isFullscreen = !!document.msFullscreenElement;
+            updateFullscreenButton();
+        });
+
+        function updateFullscreenButton() {
+            const icon = document.getElementById('fullscreen-icon');
+            const text = document.getElementById('fullscreen-text');
+            
+            if (isFullscreen) {
+                icon.textContent = '🗗';
+                text.textContent = 'Exit Fullscreen';
+            } else {
+                icon.textContent = '🗖';
+                text.textContent = 'Fullscreen';
+            }
+        }
 
         // ==========================================
         // 3. THREE.JS SYSTEM
@@ -612,6 +821,7 @@
             if (hasError) return;
             
             document.getElementById('btnStart').style.display = 'none';
+            document.getElementById('toggle-controls').style.display = 'flex';
             
             // Try to play music
             try {
