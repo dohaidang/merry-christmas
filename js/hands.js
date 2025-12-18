@@ -18,14 +18,33 @@ async function startSystem() {
     
     init3D();
 
+    // Initialize touch gestures for mobile
+    if (CONFIG.isMobile) {
+        initTouchGestures();
+    }
+
     const video = document.getElementsByClassName('input_video')[0];
     const canvas = document.getElementById('camera-preview');
     const ctx = canvas.getContext('2d');
     
+    // On mobile, skip camera if not available (use touch instead)
+    if (CONFIG.isMobile) {
+        // Try to start camera, but don't show error if it fails
+        startCameraHandTracking(video, canvas, ctx);
+        return;
+    }
+    
+    // Desktop: require camera
+    startCameraHandTracking(video, canvas, ctx);
+}
+
+function startCameraHandTracking(video, canvas, ctx) {
     // Check if MediaPipe is available
     if (typeof Hands === 'undefined') {
-        showError('MediaPipe Not Loaded', 
-            'MediaPipe Hands library failed to load. Please check your internet connection and refresh the page.');
+        if (!CONFIG.isMobile) {
+            showError('MediaPipe Not Loaded', 
+                'MediaPipe Hands library failed to load. Please check your internet connection and refresh the page.');
+        }
         return;
     }
 
@@ -89,8 +108,10 @@ async function startSystem() {
 
     // Check if Camera is available
     if (typeof Camera === 'undefined') {
-        showError('Camera Utils Not Loaded', 
-            'Camera utilities failed to load. Please check your internet connection and refresh the page.');
+        if (!CONFIG.isMobile) {
+            showError('Camera Utils Not Loaded', 
+                'Camera utilities failed to load. Please check your internet connection and refresh the page.');
+        }
         return;
     }
 
@@ -110,6 +131,16 @@ async function startSystem() {
         
         cameraUtils.start().catch(error => {
             console.error('Camera error:', error);
+            // On mobile, don't show error - use touch gestures instead
+            if (CONFIG.isMobile) {
+                console.log('Camera not available on mobile, using touch gestures');
+                const cameraPreview = document.getElementById('camera-preview');
+                if (cameraPreview) {
+                    cameraPreview.classList.add('no-camera');
+                }
+                return;
+            }
+            
             if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
                 showError('Camera Permission Denied', 
                     'Please allow camera access to use hand tracking features. You can still view the 3D scene without camera.');
@@ -122,8 +153,152 @@ async function startSystem() {
             }
         });
     } catch (e) {
-        showError('Camera Initialization Failed', 
-            'Failed to initialize camera. Error: ' + e.message);
+        if (!CONFIG.isMobile) {
+            showError('Camera Initialization Failed', 
+                'Failed to initialize camera. Error: ' + e.message);
+        }
     }
+}
+
+// ==========================================
+// TOUCH GESTURES FOR MOBILE
+// ==========================================
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+let lastTapTime = 0;
+let tapCount = 0;
+let longPressTimer = null;
+let initialDistance = 0;
+
+function initTouchGestures() {
+    const canvas = document.getElementById('canvas-container');
+    
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+}
+
+function handleTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        touchStartTime = Date.now();
+        
+        // Double tap detection
+        const currentTime = Date.now();
+        const timeDiff = currentTime - lastTapTime;
+        if (timeDiff < 300 && timeDiff > 0) {
+            tapCount++;
+        } else {
+            tapCount = 1;
+        }
+        lastTapTime = currentTime;
+        
+        // Long press timer
+        longPressTimer = setTimeout(() => {
+            resetScene();
+        }, 1000);
+    } else if (e.touches.length === 2) {
+        // Two finger - prepare for pinch
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        initialDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+    }
+}
+
+function handleTouchMove(e) {
+    e.preventDefault();
+    
+    // Cancel long press if moved
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+    
+    // Two finger pinch
+    if (e.touches.length === 2 && state === 'PHOTO') {
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const distance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+        
+        if (initialDistance > 0) {
+            const scale = distance / initialDistance;
+            // You can implement zoom here if needed
+        }
+    }
+}
+
+function handleTouchEnd(e) {
+    e.preventDefault();
+    
+    // Cancel long press
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+    
+    if (e.changedTouches.length === 0) return;
+    
+    const touch = e.changedTouches[0];
+    const touchEndX = touch.clientX;
+    const touchEndY = touch.clientY;
+    const touchDuration = Date.now() - touchStartTime;
+    const deltaX = touchEndX - touchStartX;
+    const deltaY = touchEndY - touchStartY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    // Double tap
+    if (tapCount === 2) {
+        if (state === 'EXPLODE' || state === 'PHOTO') {
+            state = 'PHOTO';
+        }
+        tapCount = 0;
+        return;
+    }
+    
+    // Single tap
+    if (tapCount === 1 && touchDuration < 300 && distance < 50) {
+        setTimeout(() => {
+            if (tapCount === 1) {
+                // Toggle between TREE and EXPLODE
+                if (state === 'TREE') {
+                    state = 'EXPLODE';
+                } else if (state === 'EXPLODE') {
+                    state = 'TREE';
+                } else if (state === 'PHOTO') {
+                    state = 'EXPLODE';
+                }
+            }
+        }, 300);
+    }
+    
+    // Swipe detection
+    if (distance > 50 && touchDuration < 300) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            // Horizontal swipe
+            if (deltaX > 0) {
+                changePhoto('next');
+            } else {
+                changePhoto('prev');
+            }
+        } else {
+            // Vertical swipe
+            if (deltaY < 0) {
+                state = 'HEART';
+            }
+        }
+    }
+    
+    tapCount = 0;
+    initialDistance = 0;
 }
 

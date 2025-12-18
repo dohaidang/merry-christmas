@@ -326,7 +326,16 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+// Throttle resize event for better performance
+let resizeTimeout;
 window.addEventListener('resize', () => {
-    if(camera) { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        if(camera && renderer) {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    }, 250); // Throttle to 250ms
 });
 

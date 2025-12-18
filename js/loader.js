@@ -57,3 +57,13 @@ if (typeof THREE !== 'undefined') {
     setTimeout(() => clearInterval(checkThree), 5000);
 }
 
+// Update guide text for mobile (after CONFIG is loaded)
+setTimeout(() => {
+    if (typeof CONFIG !== 'undefined' && CONFIG.isMobile) {
+        const guideText = document.getElementById('guide-text');
+        if (guideText) {
+            guideText.innerHTML = '👆 <b>Tap:</b> Toggle &nbsp;|&nbsp; 👆👆 <b>Double Tap:</b> Photo &nbsp;|&nbsp; 👈👉 <b>Swipe:</b> Navigate &nbsp;|&nbsp; ⬆️ <b>Swipe Up:</b> Heart';
+        }
+    }
+}, 100);
+

@@ -163,3 +163,185 @@ button {
     border-color: #FFD700; transform: scale(1.1);
 }
 
+/* ==========================================
+   RESPONSIVE DESIGN - MOBILE OPTIMIZATION
+   ========================================== */
+
+/* Mobile devices */
+@media (max-width: 768px) {
+    /* UI Layer adjustments */
+    #ui-layer {
+        bottom: 20px;
+        padding: 0 10px;
+    }
+    
+    .guide {
+        font-size: 11px;
+        margin-bottom: 15px;
+        padding: 0 10px;
+    }
+    
+    button {
+        padding: 12px 35px;
+        font-size: 14px;
+        border-radius: 25px;
+    }
+    
+    /* Camera preview - smaller on mobile, hidden if no camera */
+    #camera-preview {
+        width: 80px;
+        height: 60px;
+        top: 10px;
+        right: 10px;
+        opacity: 0.5;
+    }
+    
+    #camera-preview.no-camera {
+        display: none;
+    }
+    
+    /* Controls panel - full width on mobile */
+    #controls-panel {
+        top: 60px;
+        left: 10px;
+        right: 10px;
+        min-width: auto;
+        max-width: calc(100% - 20px);
+        padding: 12px;
+    }
+    
+    #toggle-controls {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        top: 10px;
+        left: 10px;
+    }
+    
+    /* Loading screen adjustments */
+    .loading-text {
+        font-size: 18px;
+        margin-bottom: 20px;
+    }
+    
+    .progress-container {
+        width: 250px;
+    }
+    
+    .spinner {
+        width: 50px;
+        height: 50px;
+    }
+    
+    /* Error message */
+    .error-message {
+        max-width: 90%;
+        padding: 20px;
+        margin: 0 10px;
+    }
+    
+    .error-message h2 {
+        font-size: 20px;
+    }
+    
+    .error-message p {
+        font-size: 14px;
+    }
+    
+    /* Control buttons - larger touch targets */
+    .control-btn {
+        padding: 12px 15px;
+        font-size: 14px;
+        min-height: 44px; /* iOS recommended touch target */
+    }
+    
+    .volume-slider {
+        height: 8px;
+    }
+    
+    .volume-slider::-webkit-slider-thumb {
+        width: 20px;
+        height: 20px;
+    }
+    
+    .volume-slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+    .guide {
+        font-size: 10px;
+        margin-bottom: 12px;
+    }
+    
+    button {
+        padding: 10px 25px;
+        font-size: 13px;
+    }
+    
+    #camera-preview {
+        width: 70px;
+        height: 52px;
+    }
+    
+    .loading-text {
+        font-size: 16px;
+    }
+    
+    .progress-container {
+        width: 200px;
+    }
+}
+
+/* Landscape mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    #ui-layer {
+        bottom: 10px;
+    }
+    
+    .guide {
+        font-size: 10px;
+        margin-bottom: 8px;
+    }
+    
+    button {
+        padding: 8px 20px;
+        font-size: 12px;
+    }
+    
+    #camera-preview {
+        width: 100px;
+        height: 75px;
+    }
+    
+    #controls-panel {
+        top: 10px;
+        max-height: calc(100vh - 20px);
+        overflow-y: auto;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    /* Remove hover effects on touch devices */
+    .control-btn:hover {
+        transform: none;
+    }
+    
+    #toggle-controls:hover {
+        transform: none;
+    }
+    
+    /* Larger touch targets */
+    button {
+        min-height: 44px;
+    }
+    
+    .control-btn {
+        min-height: 44px;
+    }
+}
+
